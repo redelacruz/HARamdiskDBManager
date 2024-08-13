@@ -19,9 +19,9 @@ from pathlib import Path
 from pytimeparse import parse
 
 
-DB_FILENAME: str = 'home-assistant_v2.db'
-RAMDISK_PATH: str = '/mount/'
-STORAGE_PATH: str = '/storage/'
+DB_FILENAME: str = os.getenv('DB_FILENAME', 'home-assistant_v2.db')
+RAMDISK_PATH: str = os.getenv('RAMDISK_PATH', '/mount/')
+STORAGE_PATH: str = os.getenv('STORAGE_PATH', '/storage/')
 RAMDISK_DB_PATH: str = RAMDISK_PATH + DB_FILENAME
 BACKUP_DB_PATH: str = STORAGE_PATH + DB_FILENAME
 BACKUP_DB_COPY_PATH: str = BACKUP_DB_PATH + ".copy"
@@ -47,13 +47,13 @@ def start(force_recopy: bool = False) -> None:
     if os.path.exists(MOUNT_FLAG_PATH):
         print('Deleting incompletely copied database')
         Path.unlink(RAMDISK_DB_PATH)
+    Path(MOUNT_FLAG_PATH).touch()
 
     if not os.path.exists(RAMDISK_DB_PATH) or force_recopy:
         if not os.path.exists(BACKUP_DB_PATH):
             sys.exit('No HomeAssistant DB in storage. Generate one and move it to storage first.')
 
         print('Copying DB from storage...', end=' ')
-        Path(MOUNT_FLAG_PATH).touch()
         shutil.copy2(BACKUP_DB_PATH, RAMDISK_DB_PATH)
         print('success')
     else:
@@ -95,8 +95,8 @@ def sync(
     ):
         query: str = "".join(line for line in ramdisk_db.iterdump())
         backup_db.executescript(query)
-        ramdisk_db.close()
-        backup_db.close()
+        ramdisk_db.commit()
+        backup_db.commit()
 
     OLD_BACKUP_DB_PATH = BACKUP_DB_PATH + '.bak'
     if os.path.exists(OLD_BACKUP_DB_PATH):
@@ -113,21 +113,23 @@ def sync(
     
     os.rename(
         OLD_BACKUP_DB_PATH + '.tar.gz',
-        OLD_BACKUP_DB_PATH + datetime.now().strftime('%Y-%-m-%-d-%H:%M:%S') + '.tar.gz'
+        OLD_BACKUP_DB_PATH + datetime.now().strftime('-%Y-%-m-%-d-%H:%M:%S') + '.tar.gz'
     )
     Path.unlink(OLD_BACKUP_DB_PATH)
     print('success')
 
     # Remove all .tar.gz files that exceed the max count or the max age
     print('Removing old backup archives')
+    print('Keeping ' + str(backup_max_count) + ' copies', end = ' ')
+    print('not more than ' + str(backup_max_age) + ' old')
     backup_count: int = 0
     for file in os.listdir(STORAGE_PATH):
         file_path = os.path.join(STORAGE_PATH, file)
         if file.endswith('.tar.gz'):
             backup_count += 1
             if (
-                backup_count < backup_max_count
-                or os.stat(file).st_mtime < datetime.now() - backup_max_age
+                backup_count > backup_max_count
+                or os.stat(file_path).st_mtime < (datetime.now() - backup_max_age).timestamp()
             ):
                 print('Removed ' + file)
                 Path.unlink(file_path)
@@ -143,29 +145,35 @@ def main() -> None:
     if FORCE_RECOPY_STR not in os.environ:
         start()
     else:
-        start(True)
+        bool_dict: dict[str, bool] = {"true": True, "false": False}
+        force_recopy: bool = bool_dict.get(os.getenv(FORCE_RECOPY_STR).lower(), False)
+        if force_recopy:
+            print('Warning: Starting in force recopy mode!')
+        start(force_recopy)
 
     sync_interval: int = 0
     if SYNC_INTERVAL_STR in os.environ:
         try:
-            sync_interval = int(os.environ[SYNC_INTERVAL_STR])
+            sync_interval = int(os.getenv(SYNC_INTERVAL_STR))
         except ValueError:
             print('Invalid SYNC_INTERVAL value. Defaulting to 10 minutes.')
+    if sync_interval == 0:
+        sync_interval = 10
 
     backup_count: int = 0
     if BACKUP_COUNT_STR in os.environ:
         try:
-            backup_count = int(os.environ[BACKUP_COUNT_STR])
+            backup_count = int(os.getenv(BACKUP_COUNT_STR))
         except ValueError:
             print('Invalid BACKUP_COUNT value. Defaulting to 10.')
 
-    backup_max_age: int = 0
+    backup_max_age: timedelta = timedelta(seconds=0)
     if BACKUP_MAX_AGE_STR in os.environ:
-        parsed_age: any = parse(os.environ[BACKUP_MAX_AGE_STR])
+        parsed_age: any = parse(os.getenv(BACKUP_MAX_AGE_STR))
         if parsed_age is not None:
-            backup_max_age = parsed_age
+            backup_max_age = timedelta(seconds=int(parsed_age))
         else:
-            backup_max_age = 86400  # 1 day in seconds
+            backup_max_age = timedelta(days=1)
 
     def perform_sync() -> None:
         if backup_count and backup_max_age:
@@ -177,8 +185,9 @@ def main() -> None:
         else:
             sync()
     
+    print('Starting with a sync interval of ' + str(sync_interval) + ' minute(s)')
     while True:
-        time.sleep(sync_interval * 60)  # sleep sync_interval number of minutes
+        time.sleep(sync_interval * 60)
         perform_sync()
 
 
