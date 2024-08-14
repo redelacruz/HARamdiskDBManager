@@ -49,6 +49,7 @@ def start(force_recopy: bool = False) -> None:
         Path.unlink(RAMDISK_DB_PATH)
     Path(MOUNT_FLAG_PATH).touch()
 
+    resuming: bool = False
     if not os.path.exists(RAMDISK_DB_PATH) or force_recopy:
         if not os.path.exists(BACKUP_DB_PATH):
             sys.exit('No HomeAssistant DB in storage. Generate one and move it to storage first.')
@@ -57,6 +58,7 @@ def start(force_recopy: bool = False) -> None:
         shutil.copy2(BACKUP_DB_PATH, RAMDISK_DB_PATH)
         print('success')
     else:
+        resuming = True
         print('Found existing database, resuming sync')
     
     Path.unlink(MOUNT_FLAG_PATH)
@@ -66,6 +68,9 @@ def start(force_recopy: bool = False) -> None:
     if os.path.exists(BACKUP_DB_COPY_PATH):
         Path.unlink(BACKUP_DB_COPY_PATH)
     print('Startup complete')
+
+    if resuming:
+        sync()
 
 
 def sync(
