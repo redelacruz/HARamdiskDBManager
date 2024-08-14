@@ -27,7 +27,7 @@ BACKUP_DB_PATH: str = STORAGE_PATH + DB_FILENAME
 BACKUP_DB_COPY_PATH: str = BACKUP_DB_PATH + ".copy"
 
 
-def start(force_recopy: bool = False) -> None:
+def start(force_recopy: bool = False) -> bool:
     """Copies the HomeAssistant database from storage to the ramdisk.
 
     In case of a restart, this function skips the copy operation unless `force_recopy` is `True`.
@@ -35,6 +35,9 @@ def start(force_recopy: bool = False) -> None:
     Args:
         force_recopy (bool, optional): If `True`, forces a recopy of the database from storage into
                                        the ramdisk. Defaults to False.
+
+    Returns:
+        bool: `True` if an existing database is found in the ramdisk mount.
     """
 
     print('Starting HomeAssistant ramdisk database manager')
@@ -69,8 +72,7 @@ def start(force_recopy: bool = False) -> None:
         Path.unlink(BACKUP_DB_COPY_PATH)
     print('Startup complete')
 
-    if resuming:
-        sync()
+    return resuming
 
 
 def sync(
@@ -147,8 +149,9 @@ def main() -> None:
     BACKUP_COUNT_STR = 'BACKUP_COUNT'
     BACKUP_MAX_AGE_STR = 'BACKUP_MAX_AGE'
 
+    resuming: bool = False
     if FORCE_RECOPY_STR not in os.environ:
-        start()
+        resuming = start()
     else:
         bool_dict: dict[str, bool] = {"true": True, "false": False}
         force_recopy: bool = bool_dict.get(os.getenv(FORCE_RECOPY_STR).lower(), False)
@@ -189,6 +192,9 @@ def main() -> None:
             sync(backup_max_age=backup_max_age)
         else:
             sync()
+
+    if resuming:
+        perform_sync()
     
     print('Starting with a sync interval of ' + str(sync_interval) + ' minute(s)')
     while True:
