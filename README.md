@@ -161,7 +161,7 @@ docker compose up -d
 ```
 to build the Home Assistant RAM Disk Database Manager service and recreate the Home Assistant service (this will cause Home Assistant to restart).
 
-Check that the app started correctly by checking the Docker logs from its container. If all went well (and assuming the default options were used), they should look something like this:
+Check that the app started correctly by inspecting the logs from its container. If all went well (and assuming the default options were used), they should look something like this:
 ```
 Starting
 Starting HomeAssistant ramdisk database manager
@@ -203,3 +203,23 @@ services:
     network_mode: host
 ```
 
+## Environment Variables
+The following environment variables (listed with their default values) allow you to control the behavior of The Home Assistant RAM Disk Database Manager:
+
+**`FORCE_RECOPY`**: `false`\
+Forces the app to copy the database in persistent storage to the RAM disk at startup. This can be used to revert to a backup in the in-memory database gets corrupted.\
+***IMPORTANT!** Remember to set this to false after using it. Otherwise, you might cause the database on the RAM disk to be overwritten during a container restart. This can be very bad especially if Home Assistant is writing to the database as you're doing this.*
+
+**`SYNC_INTERVAL`**: `10`\
+In minutes, this environment variable sets how often the app will try to clone the database in the RAM drive to persistent storage. Setting this to 0 will cause it to default back to 10.
+
+**`BACKUP_COUNT`**: `10`\
+Sets how many backups of the database the app will try to keep. If `BACKUP_MAX_AGE` results in a lesser number of backups, `BACKUP_COUNT` has essentially no effect.
+
+**`BACKUP_MAX_AGE`**: `1 day`\
+Sets how old backups can get before they are deleted. Any string parsable by [pytimeparse](https://github.com/wroberts/pytimeparse?tab=readme-ov-file#pytimeparse-time-expression-parser) will be accepted. If `BACKUP_COUNT` results in a lesser number of backups, `BACKUP_MAX_AGE` has essentially no effect.
+
+**`USE_ROOT`**: `false`\
+Allows the app to use `sudo` elevation in order to copy and store the database as root. Do not use this option without first verifying that the app works without it.\
+*Note: You likely won't need `USE_ROOT` even if your Home Assistant implementation runs as root in a privileged Docker container. The app only uses read operations for copying, so root is not needed to clone the database into backup. And Home Assistant doesn't care if the database is owned by a non-root user because its root permissions supersede them.\
+You might need `USE_ROOT` if you modified the permissions of the recorder database to deny non-root users read access to it or if your Home Assistant implementation runs as a non-root, non-`1000:1000` user.*
