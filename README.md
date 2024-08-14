@@ -176,6 +176,12 @@ Starting with a sync interval of 10 minute(s)
 ```
 It's also a good idea to periodically check the logs of your Home Assistant service for database errors after setup.
 
+If you ever need to rebuild the Home Assistant RAM Disk Database Manager, you can use
+```
+docker compose up -d --build homeassistant_db
+```
+to do so.
+
 ## Sample Docker Compose File
 ```
 services:
