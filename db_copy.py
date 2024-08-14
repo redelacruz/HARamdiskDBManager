@@ -129,14 +129,21 @@ def sync(
     print('Removing old backup archives')
     print('Keeping ' + str(backup_max_count) + ' copies', end = ' ')
     print('not more than ' + str(backup_max_age) + ' old')
+
+    def get_modification_date(file_path):
+        """Helper function to get the modification time of a file"""
+        return os.path.getmtime(os.path.join(STORAGE_PATH, file_path))
+
     backup_count: int = 0
-    for file in os.listdir(STORAGE_PATH):
+    files:list[str] = os.listdir(STORAGE_PATH)
+    files = sorted(files, key=get_modification_date, reverse=True)
+    for file in files:
         file_path = os.path.join(STORAGE_PATH, file)
         if file.endswith('.tar.gz'):
             backup_count += 1
             if (
                 backup_count > backup_max_count
-                or os.stat(file_path).st_mtime < (datetime.now() - backup_max_age).timestamp()
+                or get_modification_date(file) < (datetime.now() - backup_max_age).timestamp()
             ):
                 print('Removed ' + file)
                 Path.unlink(file_path)
