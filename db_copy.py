@@ -59,6 +59,10 @@ def start(force_recopy: bool = False) -> bool:
 
         print('Copying DB from storage...', end=' ')
         shutil.copy2(BACKUP_DB_PATH, RAMDISK_DB_PATH)
+        try:
+            os.chmod(RAMDISK_DB_PATH, 0o664)
+        except OSError as e:
+            print(f"Error changing permissions: {e}")
         print('success')
     else:
         resuming = True
