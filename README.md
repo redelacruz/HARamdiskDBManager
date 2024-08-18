@@ -227,5 +227,5 @@ Sets how old backups can get before they are deleted. Any string parsable by [py
 
 **`USE_ROOT`**: `false`\
 Allows the app to use `sudo` elevation in order to copy and store the database as root. Do not use this option without first verifying that the app works without it.\
-*Note: You likely won't need `USE_ROOT` even if your Home Assistant implementation runs as root in a privileged Docker container. The app only uses read operations for copying, so root is not needed to clone the database into backup. And Home Assistant doesn't care if the database is owned by a non-root user because its root permissions supersede them.\
+*Note: You likely won't need `USE_ROOT` even if your Home Assistant implementation runs as root in a privileged Docker container. The app only uses read operations for copying, so root is not needed to clone the database into backup.\
 You might need `USE_ROOT` if you modified the permissions of the recorder database to deny non-root users read access to it or if your Home Assistant implementation runs as a non-root, non-`1000:1000` user.*
