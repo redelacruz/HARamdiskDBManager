@@ -10,10 +10,12 @@
 import os
 import shutil
 import sqlite3
+import subprocess
 import sys
 import tarfile
 import time
 
+from configparser import ConfigParser
 from datetime import datetime, timedelta
 from pathlib import Path
 from pytimeparse import parse
@@ -24,11 +26,12 @@ RAMDISK_PATH: str = os.getenv('RAMDISK_PATH', '/mount/')
 STORAGE_PATH: str = os.getenv('STORAGE_PATH', '/storage/')
 RAMDISK_DB_PATH: str = RAMDISK_PATH + DB_FILENAME
 BACKUP_DB_PATH: str = STORAGE_PATH + DB_FILENAME
-BACKUP_DB_COPY_PATH: str = BACKUP_DB_PATH + ".copy"
+BACKUP_DB_COPY_PATH: str = BACKUP_DB_PATH + '.copy'
+CONFIG_FILE_PATH: str = STORAGE_PATH + 'config.ini'
 
 
 def start(force_recopy: bool = False) -> bool:
-    """Copies the HomeAssistant database from storage to the ramdisk.
+    """Copies the Home Assistant database from storage to the ramdisk.
 
     In case of a restart, this function skips the copy operation unless `force_recopy` is `True`.
 
@@ -40,7 +43,7 @@ def start(force_recopy: bool = False) -> bool:
         bool: `True` if an existing database is found in the ramdisk mount.
     """
 
-    print('Starting HomeAssistant ramdisk database manager')
+    print('Starting Home Assistant RAM Disk Database Manager')
 
     HEALTHCHECK_FLAG_PATH: str = RAMDISK_PATH + 'healthcheck'
     if os.path.exists(HEALTHCHECK_FLAG_PATH):
@@ -59,10 +62,22 @@ def start(force_recopy: bool = False) -> bool:
 
         print('Copying DB from storage...', end=' ')
         shutil.copy2(BACKUP_DB_PATH, RAMDISK_DB_PATH)
-        try:
-            os.chmod(RAMDISK_DB_PATH, 0o664)
-        except OSError as e:
-            print(f"Error changing permissions: {e}")
+
+        # Get the database properties from the config file and reapply them
+        if os.path.exists(CONFIG_FILE_PATH):
+            config: ConfigParser = ConfigParser()
+            config.read(CONFIG_FILE_PATH)
+            db_owner: str = config['db_properties']['owner']
+            db_group: str = config['db_properties']['group']
+            db_perms: str = config['db_properties']['permissions']
+
+            try:
+                os.chmod(RAMDISK_DB_PATH, int(db_perms, 8))
+            except OSError as e:
+                print(f'Error changing permissions: {e}')
+            
+            subprocess.run(['sudo', '-h', '127.0.0.1', 'chown', db_owner + ':' + db_group, RAMDISK_DB_PATH])
+
         print('success')
     else:
         resuming = True
@@ -99,12 +114,21 @@ def sync(
 
     print('Synching ramdisk database to persistent storage...', end=' ')
 
+    # Get the database file ownership and permissions and store them
+    config: ConfigParser = ConfigParser()
+    config['db_properties'] = {}
+    config['db_properties']['owner'] = str(os.stat(RAMDISK_DB_PATH).st_uid)
+    config['db_properties']['group'] = str(os.stat(RAMDISK_DB_PATH).st_gid)
+    config['db_properties']['permissions'] = str(oct(os.stat(RAMDISK_DB_PATH).st_mode & 0o777))
+    with open(CONFIG_FILE_PATH, 'w') as config_file:
+        config.write(config_file)
+
     # Dump the ramdisk database into a backup copy database
     with (
         sqlite3.connect(RAMDISK_DB_PATH) as ramdisk_db,
         sqlite3.connect(BACKUP_DB_COPY_PATH) as backup_db
     ):
-        query: str = "".join(line for line in ramdisk_db.iterdump())
+        query: str = ''.join(line for line in ramdisk_db.iterdump())
         backup_db.executescript(query)
         ramdisk_db.commit()
         backup_db.commit()
@@ -164,7 +188,7 @@ def main() -> None:
     if FORCE_RECOPY_STR not in os.environ:
         resuming = start()
     else:
-        bool_dict: dict[str, bool] = {"true": True, "false": False}
+        bool_dict: dict[str, bool] = {'true': True, 'false': False}
         force_recopy: bool = bool_dict.get(os.getenv(FORCE_RECOPY_STR).lower(), False)
         if force_recopy:
             print('Warning: Starting in force recopy mode!')
@@ -213,5 +237,5 @@ def main() -> None:
         perform_sync()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
