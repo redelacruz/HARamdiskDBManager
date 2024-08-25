@@ -128,8 +128,7 @@ def sync(
         sqlite3.connect(RAMDISK_DB_PATH) as ramdisk_db,
         sqlite3.connect(BACKUP_DB_COPY_PATH) as backup_db
     ):
-        query: str = ''.join(line for line in ramdisk_db.iterdump())
-        backup_db.executescript(query)
+        ramdisk_db.backup(backup_db, pages=1, sleep=0.250)
         ramdisk_db.commit()
         backup_db.commit()
 
